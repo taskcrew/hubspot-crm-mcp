@@ -113,14 +113,16 @@ Your HubSpot private app needs the following scopes:
 
 | Scope | Required For |
 |-------|--------------|
-| `crm.objects.contacts.read` | Reading contacts |
-| `crm.objects.contacts.write` | Creating/updating/deleting contacts |
+| `crm.objects.contacts.read` | Contacts, engagements, tasks, notes |
+| `crm.objects.contacts.write` | Creating/updating contacts, tasks, notes |
 | `crm.objects.companies.read` | Reading companies |
 | `crm.objects.companies.write` | Creating/updating/deleting companies |
 | `crm.objects.deals.read` | Reading deals and pipelines |
 | `crm.objects.deals.write` | Creating/updating deals |
 | `crm.objects.owners.read` | Listing owners |
-| `sales-email-read` | Reading engagement history |
+| `sales-email-read` | Reading email engagement history |
+
+Note: Tasks and notes use the CRM v3 objects API and typically work with contacts scopes. If you encounter permission errors, check [HubSpot's scope documentation](https://developers.hubspot.com/docs/api/scopes) for your specific tier.
 
 ## License
 
