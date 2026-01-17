@@ -33,9 +33,9 @@ Create a [HubSpot private app](https://developers.hubspot.com/docs/api/private-a
 
 Add the token to Vercel: Project Settings → Environment Variables → `HUBSPOT_ACCESS_TOKEN`
 
-### 3. Configure Claude Code
+### 3. Configure Your MCP Client
 
-Add to your `.mcp.json` (project-level) or `~/.claude/mcp.json` (global):
+**Claude Code** - Add to `.mcp.json` (project) or `~/.claude/mcp.json` (global):
 
 ```json
 {
@@ -48,6 +48,21 @@ Add to your `.mcp.json` (project-level) or `~/.claude/mcp.json` (global):
 ```
 
 Restart Claude Code or run `/mcp` to connect.
+
+**Claude Desktop** - Edit `claude_desktop_config.json` ([location](https://modelcontextprotocol.io/docs/develop/connect-local-servers)):
+
+```json
+{
+  "mcpServers": {
+    "hubspot-crm": {
+      "command": "npx",
+      "args": ["mcp-remote", "https://your-deployment.vercel.app/mcp"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop to connect.
 
 ## Features
 
