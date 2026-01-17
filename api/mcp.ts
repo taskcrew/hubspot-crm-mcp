@@ -637,6 +637,17 @@ const TOOLS = [
     },
   },
   {
+    name: 'hubspot_delete_deal',
+    description: 'Delete a deal. This action is permanent and cannot be undone.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Deal ID to delete' },
+      },
+      required: ['id'],
+    },
+  },
+  {
     name: 'hubspot_deal_properties',
     description: 'List all available deal properties. Use this to discover property names for searching/filtering deals.',
     inputSchema: {
@@ -1073,6 +1084,10 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
           paging: data.paging,
         };
       }
+
+      case 'hubspot_delete_deal':
+        await hubspot(`/crm/v3/objects/deals/${args.id}`, 'DELETE');
+        return { success: true, deleted: args.id };
 
       case 'hubspot_deal_properties': {
         const data = await hubspot('/crm/v3/properties/deals') as { results: Array<{ name: string; label: string; type: string; description: string }> };

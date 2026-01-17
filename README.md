@@ -8,7 +8,7 @@ MCP (Model Context Protocol) server for HubSpot CRM, deployed as a Vercel server
 
 - **Contacts**: List, get, create, update, delete, search contacts
 - **Companies**: List, get, create, update, delete, search companies
-- **Deals**: Get, create, update, search deals with pipeline/stage management
+- **Deals**: Get, create, update, delete, search deals with pipeline/stage management
 - **Tasks**: Create, search, update tasks (follow-up reminders)
 - **Engagements**: Get engagement history, log emails, create notes
 - **Owners**: List and get HubSpot users
@@ -104,6 +104,7 @@ Add to your MCP client config (e.g., Claude Desktop):
 | `hubspot_create_deal` | Create deal with contact/company associations |
 | `hubspot_update_deal` | Update deal properties |
 | `hubspot_search_deals` | Search deals by owner/stage/pipeline/amount |
+| `hubspot_delete_deal` | Delete a deal |
 | `hubspot_deal_properties` | List deal property schema |
 | `hubspot_list_pipelines` | List deal pipelines and stages |
 
