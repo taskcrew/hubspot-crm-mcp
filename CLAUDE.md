@@ -38,6 +38,7 @@ POST /mcp → vercel.json rewrite → /api/mcp.ts
 | Deals | `list`, `get`, `create`, `update`, `delete`, `search`, `deal_properties`, `list_pipelines` |
 | Tasks | `get`, `create`, `update`, `delete`, `search` |
 | Engagements | `get_engagements`, `log_email`, `log_call`, `log_meeting`, `delete_call`, `delete_meeting`, `create_note` |
+| Lists | `list_lists`, `get_list`, `create_list`, `update_list`, `delete_list`, `get_list_memberships`, `add_to_list`, `remove_from_list`, `search_lists` |
 | Associations | `get`, `create`, `delete` |
 | Properties | `contact_properties`, `company_properties`, `deal_properties` |
 | Owners | `list_owners`, `get_owner` |
@@ -75,3 +76,15 @@ All tools use HubSpot CRM v3 API (`https://api.hubapi.com/crm/v3/...`):
 - Search: `POST /objects/{type}/search` with `{ query, filterGroups, properties, sorts, limit }`
 
 Engagements use associations API: `GET /crm/v4/objects/contacts/{id}/associations/{type}`
+
+### Lists API (Marketing Automation)
+
+Lists use the legacy v1 API (`/contacts/v1/lists/...`):
+- **MANUAL lists**: Static lists where contacts are added/removed manually
+- **DYNAMIC lists**: Smart lists that auto-populate based on filter criteria
+
+Key operations:
+- List/Get: Returns `listId`, `name`, `processingType` (MANUAL/DYNAMIC), `size`
+- Memberships: Returns contact IDs (vids) with pagination via `vidOffset`
+- Add/Remove: Only works on MANUAL lists, max 500 contacts per call
+- Search: Client-side filtering (API lacks native search)

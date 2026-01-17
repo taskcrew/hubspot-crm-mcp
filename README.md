@@ -29,6 +29,8 @@ Create a [HubSpot private app](https://developers.hubspot.com/docs/api/private-a
 | `crm.objects.deals.read` | Reading deals and pipelines |
 | `crm.objects.deals.write` | Creating/updating deals |
 | `crm.objects.owners.read` | Listing owners |
+| `crm.lists.read` | Reading contact lists |
+| `crm.lists.write` | Creating/updating/managing lists |
 | `sales-email-read` | Reading email engagement history |
 
 Add the token to Vercel: Project Settings → Environment Variables → `HUBSPOT_ACCESS_TOKEN`
@@ -71,6 +73,7 @@ Restart Claude Desktop to connect.
 - **Deals**: List, get, create, update, delete, search deals with pipeline/stage management
 - **Tasks**: Get, create, update, delete, search tasks (follow-up reminders)
 - **Engagements**: Get engagement history, log emails/calls/meetings, create notes
+- **Lists**: Create and manage static/dynamic lists for marketing automation
 - **Associations**: Get, create, delete links between objects (contacts↔companies↔deals)
 - **Owners**: List and get HubSpot users
 - **Properties**: Discover available contact/company/deal properties
@@ -126,6 +129,15 @@ Results are compacted by default to reduce token usage:
 | `hubspot_get_associations` | Get associations for a record |
 | `hubspot_create_association` | Create association between objects |
 | `hubspot_delete_association` | Remove association between objects |
+| `hubspot_list_lists` | List all contact lists (static/dynamic) |
+| `hubspot_get_list` | Get list details by ID |
+| `hubspot_create_list` | Create static or dynamic list |
+| `hubspot_update_list` | Update list name or filters |
+| `hubspot_delete_list` | Delete a list |
+| `hubspot_get_list_memberships` | Get contacts in a list |
+| `hubspot_add_to_list` | Add contacts to static list |
+| `hubspot_remove_from_list` | Remove contacts from static list |
+| `hubspot_search_lists` | Search lists by name |
 
 ## Development
 

@@ -3,7 +3,7 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 const HUBSPOT_API = 'https://api.hubapi.com';
 const MCP_VERSION = '2024-11-05';
 const SERVER_NAME = 'hubspot-crm-mcp';
-const SERVER_VERSION = '1.3.0';
+const SERVER_VERSION = '1.4.0';
 
 // Response optimization defaults
 const DEFAULT_MAX_RESULTS = 20;
@@ -843,6 +843,142 @@ const TOOLS = [
       required: ['fromObjectType', 'fromObjectId', 'toObjectType', 'toObjectId'],
     },
   },
+  // Lists (Marketing Automation)
+  {
+    name: 'hubspot_list_lists',
+    description: 'List all contact lists in HubSpot. Returns both static (manual) and dynamic (active/smart) lists used for marketing automation, segmentation, and email campaigns.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Max results (1-100, default: 20)', default: 20 },
+        after: { type: 'string', description: 'Pagination cursor for next page' },
+        includeFilters: { type: 'boolean', description: 'Include filter definitions for dynamic lists (default: false)', default: false },
+      },
+    },
+  },
+  {
+    name: 'hubspot_get_list',
+    description: 'Get details of a specific list by ID, including name, type (STATIC/DYNAMIC), size, and filter definitions.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        listId: { type: 'string', description: 'The list ID (ILS list ID)' },
+        includeFilters: { type: 'boolean', description: 'Include filter branch definitions for dynamic lists (default: true)', default: true },
+      },
+      required: ['listId'],
+    },
+  },
+  {
+    name: 'hubspot_create_list',
+    description: 'Create a new contact list. Static lists are manually managed; dynamic lists auto-update based on filter criteria.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'List name (must be unique)' },
+        processingType: {
+          type: 'string',
+          enum: ['MANUAL', 'DYNAMIC'],
+          description: 'MANUAL for static lists (add/remove contacts manually), DYNAMIC for smart lists (auto-populated by filters)',
+          default: 'MANUAL',
+        },
+        filterBranch: {
+          type: 'object',
+          description: 'Filter definition for DYNAMIC lists. Required for DYNAMIC type. Structure: { filterBranchType: "OR"|"AND", filters: [...], filterBranches: [...] }',
+        },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'hubspot_update_list',
+    description: 'Update a list name or filter definition. Only the name can be updated for MANUAL lists.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        listId: { type: 'string', description: 'The list ID to update' },
+        name: { type: 'string', description: 'New list name' },
+        filterBranch: {
+          type: 'object',
+          description: 'New filter definition (DYNAMIC lists only)',
+        },
+      },
+      required: ['listId'],
+    },
+  },
+  {
+    name: 'hubspot_delete_list',
+    description: 'Delete a list. This removes the list but does not delete the contacts in it.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        listId: { type: 'string', description: 'The list ID to delete' },
+      },
+      required: ['listId'],
+    },
+  },
+  {
+    name: 'hubspot_get_list_memberships',
+    description: 'Get contacts that are members of a specific list. Returns contact IDs with pagination.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        listId: { type: 'string', description: 'The list ID' },
+        limit: { type: 'number', description: 'Max results (1-100, default: 100)', default: 100 },
+        after: { type: 'string', description: 'Pagination cursor' },
+      },
+      required: ['listId'],
+    },
+  },
+  {
+    name: 'hubspot_add_to_list',
+    description: 'Add contacts to a MANUAL (static) list. Cannot add to DYNAMIC lists as they are filter-based.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        listId: { type: 'string', description: 'The static list ID' },
+        contactIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of contact IDs to add (max 500 per call)',
+        },
+      },
+      required: ['listId', 'contactIds'],
+    },
+  },
+  {
+    name: 'hubspot_remove_from_list',
+    description: 'Remove contacts from a MANUAL (static) list. Cannot remove from DYNAMIC lists.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        listId: { type: 'string', description: 'The static list ID' },
+        contactIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of contact IDs to remove (max 500 per call)',
+        },
+      },
+      required: ['listId', 'contactIds'],
+    },
+  },
+  {
+    name: 'hubspot_search_lists',
+    description: 'Search for lists by name. Useful for finding lists when you only know part of the name.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Search query to match against list names' },
+        processingType: {
+          type: 'string',
+          enum: ['MANUAL', 'DYNAMIC'],
+          description: 'Filter by list type (optional)',
+        },
+        limit: { type: 'number', description: 'Max results (1-100, default: 20)', default: 20 },
+        after: { type: 'string', description: 'Pagination cursor' },
+      },
+      required: ['query'],
+    },
+  },
 ];
 
 // Tool handler
@@ -1427,6 +1563,238 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
         return {
           success: true,
           deleted: { fromObjectType: fromType, fromObjectId: fromId, toObjectType: toType, toObjectId: toId },
+        };
+      }
+
+      // Lists (Marketing Automation)
+      case 'hubspot_list_lists': {
+        const params = new URLSearchParams();
+        params.set('count', String(Math.min(Number(args.limit) || DEFAULT_MAX_RESULTS, 100)));
+        if (args.after) params.set('offset', String(args.after));
+        if (args.includeFilters) params.set('includeFilters', 'true');
+
+        const data = await hubspot(`/contacts/v1/lists?${params}`) as {
+          lists: Array<{
+            listId: number;
+            name: string;
+            listType: string;
+            dynamic: boolean;
+            metaData: { size: number; processing: string };
+            createdAt: number;
+            updatedAt: number;
+          }>;
+          'has-more': boolean;
+          offset: number;
+        };
+
+        return {
+          lists: data.lists.map(l => ({
+            listId: String(l.listId),
+            name: l.name,
+            listType: l.listType,
+            processingType: l.dynamic ? 'DYNAMIC' : 'MANUAL',
+            size: l.metaData?.size || 0,
+            createdAt: new Date(l.createdAt).toISOString(),
+            updatedAt: new Date(l.updatedAt).toISOString(),
+          })),
+          hasMore: data['has-more'],
+          offset: data.offset,
+        };
+      }
+
+      case 'hubspot_get_list': {
+        const listId = String(args.listId);
+        const params = new URLSearchParams();
+        if (args.includeFilters !== false) params.set('includeFilters', 'true');
+
+        const data = await hubspot(`/contacts/v1/lists/${listId}?${params}`) as {
+          listId: number;
+          name: string;
+          listType: string;
+          dynamic: boolean;
+          metaData: { size: number; processing: string };
+          filters?: unknown[];
+          createdAt: number;
+          updatedAt: number;
+        };
+
+        return {
+          listId: String(data.listId),
+          name: data.name,
+          listType: data.listType,
+          processingType: data.dynamic ? 'DYNAMIC' : 'MANUAL',
+          size: data.metaData?.size || 0,
+          filters: data.filters,
+          createdAt: new Date(data.createdAt).toISOString(),
+          updatedAt: new Date(data.updatedAt).toISOString(),
+        };
+      }
+
+      case 'hubspot_create_list': {
+        const name = String(args.name);
+        const processingType = String(args.processingType || 'MANUAL');
+
+        const body: Record<string, unknown> = {
+          name,
+          dynamic: processingType === 'DYNAMIC',
+        };
+
+        if (processingType === 'DYNAMIC' && args.filterBranch) {
+          body.filters = args.filterBranch;
+        }
+
+        const data = await hubspot('/contacts/v1/lists', 'POST', body) as {
+          listId: number;
+          name: string;
+          dynamic: boolean;
+        };
+
+        return {
+          success: true,
+          listId: String(data.listId),
+          name: data.name,
+          processingType: data.dynamic ? 'DYNAMIC' : 'MANUAL',
+        };
+      }
+
+      case 'hubspot_update_list': {
+        const listId = String(args.listId);
+        const body: Record<string, unknown> = {};
+
+        if (args.name) body.name = String(args.name);
+        if (args.filterBranch) body.filters = args.filterBranch;
+
+        if (Object.keys(body).length === 0) {
+          throw new Error('At least one property to update must be provided (name or filterBranch)');
+        }
+
+        const data = await hubspot(`/contacts/v1/lists/${listId}`, 'POST', body) as {
+          listId: number;
+          name: string;
+          dynamic: boolean;
+        };
+
+        return {
+          success: true,
+          listId: String(data.listId),
+          name: data.name,
+          processingType: data.dynamic ? 'DYNAMIC' : 'MANUAL',
+        };
+      }
+
+      case 'hubspot_delete_list': {
+        const listId = String(args.listId);
+        await hubspot(`/contacts/v1/lists/${listId}`, 'DELETE');
+        return { success: true, deleted: listId };
+      }
+
+      case 'hubspot_get_list_memberships': {
+        const listId = String(args.listId);
+        const params = new URLSearchParams();
+        params.set('count', String(Math.min(Number(args.limit) || 100, 100)));
+        if (args.after) params.set('vidOffset', String(args.after));
+
+        const data = await hubspot(`/contacts/v1/lists/${listId}/contacts/all?${params}`) as {
+          contacts: Array<{ vid: number; properties?: Record<string, { value: string }> }>;
+          'has-more': boolean;
+          'vid-offset': number;
+        };
+
+        return {
+          listId,
+          contactIds: data.contacts.map(c => String(c.vid)),
+          total: data.contacts.length,
+          hasMore: data['has-more'],
+          nextOffset: data['has-more'] ? String(data['vid-offset']) : undefined,
+        };
+      }
+
+      case 'hubspot_add_to_list': {
+        const listId = String(args.listId);
+        const contactIds = (args.contactIds as string[]).map(id => Number(id));
+
+        if (contactIds.length === 0) {
+          throw new Error('At least one contact ID is required');
+        }
+        if (contactIds.length > 500) {
+          throw new Error('Maximum 500 contacts can be added per call');
+        }
+
+        const data = await hubspot(`/contacts/v1/lists/${listId}/add`, 'POST', {
+          vids: contactIds,
+        }) as { updated: number[]; discarded: number[]; invalidVids: number[] };
+
+        return {
+          success: true,
+          listId,
+          added: data.updated.length,
+          alreadyInList: data.discarded.length,
+          invalidIds: data.invalidVids.map(String),
+        };
+      }
+
+      case 'hubspot_remove_from_list': {
+        const listId = String(args.listId);
+        const contactIds = (args.contactIds as string[]).map(id => Number(id));
+
+        if (contactIds.length === 0) {
+          throw new Error('At least one contact ID is required');
+        }
+        if (contactIds.length > 500) {
+          throw new Error('Maximum 500 contacts can be removed per call');
+        }
+
+        const data = await hubspot(`/contacts/v1/lists/${listId}/remove`, 'POST', {
+          vids: contactIds,
+        }) as { updated: number[]; discarded: number[]; invalidVids: number[] };
+
+        return {
+          success: true,
+          listId,
+          removed: data.updated.length,
+          notInList: data.discarded.length,
+          invalidIds: data.invalidVids.map(String),
+        };
+      }
+
+      case 'hubspot_search_lists': {
+        const query = String(args.query).toLowerCase();
+        const processingType = args.processingType ? String(args.processingType) : undefined;
+        const limit = Math.min(Number(args.limit) || DEFAULT_MAX_RESULTS, 100);
+
+        // HubSpot v1 lists API doesn't have search, so we fetch and filter client-side
+        const params = new URLSearchParams();
+        params.set('count', '250'); // Fetch more to filter
+
+        const data = await hubspot(`/contacts/v1/lists?${params}`) as {
+          lists: Array<{
+            listId: number;
+            name: string;
+            listType: string;
+            dynamic: boolean;
+            metaData: { size: number };
+          }>;
+        };
+
+        // Filter by name and processing type
+        let filtered = data.lists.filter(l => l.name.toLowerCase().includes(query));
+
+        if (processingType) {
+          filtered = filtered.filter(l =>
+            processingType === 'DYNAMIC' ? l.dynamic : !l.dynamic
+          );
+        }
+
+        return {
+          query,
+          results: filtered.slice(0, limit).map(l => ({
+            listId: String(l.listId),
+            name: l.name,
+            listType: l.listType,
+            processingType: l.dynamic ? 'DYNAMIC' : 'MANUAL',
+            size: l.metaData?.size || 0,
+          })),
+          total: filtered.length,
         };
       }
 
