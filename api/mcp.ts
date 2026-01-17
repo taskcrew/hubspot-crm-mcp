@@ -548,6 +548,28 @@ const TOOLS = [
       required: ['contactId', 'title'],
     },
   },
+  {
+    name: 'hubspot_delete_call',
+    description: 'Delete a call record. This action is permanent.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        callId: { type: 'string', description: 'The call ID to delete' },
+      },
+      required: ['callId'],
+    },
+  },
+  {
+    name: 'hubspot_delete_meeting',
+    description: 'Delete a meeting record. This action is permanent.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        meetingId: { type: 'string', description: 'The meeting ID to delete' },
+      },
+      required: ['meetingId'],
+    },
+  },
   // Tasks
   {
     name: 'hubspot_create_task',
@@ -1106,6 +1128,14 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
           properties: meetingData.properties,
         };
       }
+
+      case 'hubspot_delete_call':
+        await hubspot(`/crm/v3/objects/calls/${args.callId}`, 'DELETE');
+        return { success: true, deleted: args.callId };
+
+      case 'hubspot_delete_meeting':
+        await hubspot(`/crm/v3/objects/meetings/${args.meetingId}`, 'DELETE');
+        return { success: true, deleted: args.meetingId };
 
       // Tasks
       case 'hubspot_create_task': {
