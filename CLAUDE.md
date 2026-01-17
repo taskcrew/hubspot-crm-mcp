@@ -35,11 +35,12 @@ POST /mcp → vercel.json rewrite → /api/mcp.ts
 |----------|-------|
 | Contacts | `list`, `get`, `create`, `update`, `delete`, `search` |
 | Companies | `list`, `get`, `create`, `update`, `delete`, `search` |
-| Properties | `contact_properties`, `company_properties` (schema discovery) |
+| Deals | `list`, `get`, `create`, `update`, `delete`, `search`, `deal_properties`, `list_pipelines` |
+| Tasks | `get`, `create`, `update`, `delete`, `search` |
+| Engagements | `get_engagements`, `log_email`, `log_call`, `log_meeting`, `create_note` |
+| Associations | `get`, `create`, `delete` |
+| Properties | `contact_properties`, `company_properties`, `deal_properties` |
 | Owners | `list_owners`, `get_owner` |
-| Engagements | `get_engagements`, `log_email`, `create_note` |
-| Tasks | `create_task`, `search_tasks`, `update_task` |
-| Deals | `get_deal`, `create_deal`, `update_deal`, `delete_deal`, `search_deals`, `deal_properties`, `list_pipelines` |
 
 ### Response Optimization
 

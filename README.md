@@ -8,9 +8,10 @@ MCP (Model Context Protocol) server for HubSpot CRM, deployed as a Vercel server
 
 - **Contacts**: List, get, create, update, delete, search contacts
 - **Companies**: List, get, create, update, delete, search companies
-- **Deals**: Get, create, update, delete, search deals with pipeline/stage management
-- **Tasks**: Create, search, update tasks (follow-up reminders)
-- **Engagements**: Get engagement history, log emails, create notes
+- **Deals**: List, get, create, update, delete, search deals with pipeline/stage management
+- **Tasks**: Get, create, update, delete, search tasks (follow-up reminders)
+- **Engagements**: Get engagement history, log emails/calls/meetings, create notes
+- **Associations**: Get, create, delete links between objects (contacts↔companies↔deals)
 - **Owners**: List and get HubSpot users
 - **Properties**: Discover available contact/company/deal properties
 - **Pipelines**: List deal pipelines and stages
@@ -96,10 +97,15 @@ Add to your MCP client config (e.g., Claude Desktop):
 | `hubspot_get_owner` | Get owner by ID |
 | `hubspot_get_engagements` | Get contact engagement history |
 | `hubspot_log_email` | Log email to contact timeline |
+| `hubspot_log_call` | Log a call with a contact |
+| `hubspot_log_meeting` | Log a meeting with a contact |
 | `hubspot_create_note` | Create note on contact |
+| `hubspot_get_task` | Get task by ID |
 | `hubspot_create_task` | Create task linked to contact |
 | `hubspot_search_tasks` | Search tasks by owner/status/date |
 | `hubspot_update_task` | Update task (mark complete, etc.) |
+| `hubspot_delete_task` | Delete a task |
+| `hubspot_list_deals` | List deals with pagination |
 | `hubspot_get_deal` | Get deal by ID |
 | `hubspot_create_deal` | Create deal with contact/company associations |
 | `hubspot_update_deal` | Update deal properties |
@@ -107,6 +113,9 @@ Add to your MCP client config (e.g., Claude Desktop):
 | `hubspot_delete_deal` | Delete a deal |
 | `hubspot_deal_properties` | List deal property schema |
 | `hubspot_list_pipelines` | List deal pipelines and stages |
+| `hubspot_get_associations` | Get associations for a record |
+| `hubspot_create_association` | Create association between objects |
+| `hubspot_delete_association` | Remove association between objects |
 
 ## Required HubSpot Scopes
 

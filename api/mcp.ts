@@ -499,6 +499,55 @@ const TOOLS = [
       required: ['contactId', 'body'],
     },
   },
+  {
+    name: 'hubspot_log_call',
+    description: 'Log a call with a contact. Use this to record phone calls in HubSpot CRM. The call will appear in the contact timeline.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        contactId: { type: 'string', description: 'The HubSpot contact ID to associate the call with' },
+        direction: {
+          type: 'string',
+          enum: ['INBOUND', 'OUTBOUND'],
+          description: 'Call direction (default: OUTBOUND)',
+          default: 'OUTBOUND',
+        },
+        durationMs: { type: 'number', description: 'Call duration in milliseconds' },
+        outcome: {
+          type: 'string',
+          enum: ['BUSY', 'CONNECTED', 'LEFT_MESSAGE', 'LEFT_VOICEMAIL', 'NO_ANSWER', 'WRONG_NUMBER'],
+          description: 'Call outcome/disposition',
+        },
+        body: { type: 'string', description: 'Call notes/summary' },
+        timestamp: {
+          type: 'string',
+          description: 'ISO 8601 timestamp of when the call occurred. Defaults to current time.',
+        },
+      },
+      required: ['contactId'],
+    },
+  },
+  {
+    name: 'hubspot_log_meeting',
+    description: 'Log a meeting with a contact. Use this to record meetings in HubSpot CRM. The meeting will appear in the contact timeline.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        contactId: { type: 'string', description: 'The HubSpot contact ID to associate the meeting with' },
+        title: { type: 'string', description: 'Meeting title/subject' },
+        body: { type: 'string', description: 'Meeting notes/description' },
+        startTime: { type: 'string', description: 'ISO 8601 timestamp for meeting start time' },
+        endTime: { type: 'string', description: 'ISO 8601 timestamp for meeting end time' },
+        outcome: {
+          type: 'string',
+          enum: ['SCHEDULED', 'COMPLETED', 'RESCHEDULED', 'NO_SHOW', 'CANCELED'],
+          description: 'Meeting outcome (default: COMPLETED)',
+          default: 'COMPLETED',
+        },
+      },
+      required: ['contactId', 'title'],
+    },
+  },
   // Tasks
   {
     name: 'hubspot_create_task',
@@ -518,6 +567,22 @@ const TOOLS = [
         },
       },
       required: ['contactId', 'subject'],
+    },
+  },
+  {
+    name: 'hubspot_get_task',
+    description: 'Get a single task by ID. Returns task details including subject, status, due date, and owner.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'The task ID to retrieve' },
+        properties: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Properties to return (defaults to common task properties)',
+        },
+      },
+      required: ['taskId'],
     },
   },
   {
@@ -563,7 +628,34 @@ const TOOLS = [
       required: ['taskId'],
     },
   },
+  {
+    name: 'hubspot_delete_task',
+    description: 'Delete a task. This action is permanent.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string', description: 'The task ID to delete' },
+      },
+      required: ['taskId'],
+    },
+  },
   // Deals
+  {
+    name: 'hubspot_list_deals',
+    description: 'List deals from HubSpot CRM with pagination. Results include basic deal info. Use search_deals for filtering.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Max results (1-100)', default: 20 },
+        after: { type: 'string', description: 'Pagination cursor' },
+        properties: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Properties to return (e.g., dealname, amount, dealstage)',
+        },
+      },
+    },
+  },
   {
     name: 'hubspot_get_deal',
     description: 'Get a single deal by ID. Returns full deal details including all properties.',
@@ -661,6 +753,72 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {},
+    },
+  },
+  // Associations
+  {
+    name: 'hubspot_get_associations',
+    description: 'Get all associations for a record. Returns IDs of linked objects (e.g., contacts linked to a company, deals linked to a contact).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        fromObjectType: {
+          type: 'string',
+          enum: ['contacts', 'companies', 'deals', 'tasks', 'notes', 'emails', 'calls', 'meetings'],
+          description: 'The type of the source object',
+        },
+        fromObjectId: { type: 'string', description: 'The ID of the source object' },
+        toObjectType: {
+          type: 'string',
+          enum: ['contacts', 'companies', 'deals', 'tasks', 'notes', 'emails', 'calls', 'meetings'],
+          description: 'The type of associated objects to retrieve',
+        },
+      },
+      required: ['fromObjectType', 'fromObjectId', 'toObjectType'],
+    },
+  },
+  {
+    name: 'hubspot_create_association',
+    description: 'Create an association between two objects (e.g., link a contact to a company, or a deal to a contact).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        fromObjectType: {
+          type: 'string',
+          enum: ['contacts', 'companies', 'deals'],
+          description: 'The type of the source object',
+        },
+        fromObjectId: { type: 'string', description: 'The ID of the source object' },
+        toObjectType: {
+          type: 'string',
+          enum: ['contacts', 'companies', 'deals'],
+          description: 'The type of the target object',
+        },
+        toObjectId: { type: 'string', description: 'The ID of the target object' },
+      },
+      required: ['fromObjectType', 'fromObjectId', 'toObjectType', 'toObjectId'],
+    },
+  },
+  {
+    name: 'hubspot_delete_association',
+    description: 'Remove an association between two objects.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        fromObjectType: {
+          type: 'string',
+          enum: ['contacts', 'companies', 'deals'],
+          description: 'The type of the source object',
+        },
+        fromObjectId: { type: 'string', description: 'The ID of the source object' },
+        toObjectType: {
+          type: 'string',
+          enum: ['contacts', 'companies', 'deals'],
+          description: 'The type of the target object',
+        },
+        toObjectId: { type: 'string', description: 'The ID of the target object' },
+      },
+      required: ['fromObjectType', 'fromObjectId', 'toObjectType', 'toObjectId'],
     },
   },
 ];
@@ -896,6 +1054,59 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
         };
       }
 
+      case 'hubspot_log_call': {
+        const contactId = String(args.contactId);
+        const timestamp = args.timestamp ? String(args.timestamp) : new Date().toISOString();
+
+        const properties: Record<string, string> = {
+          hs_timestamp: timestamp,
+          hs_call_direction: String(args.direction || 'OUTBOUND'),
+        };
+        if (args.durationMs) properties.hs_call_duration = String(args.durationMs);
+        if (args.outcome) properties.hs_call_disposition = String(args.outcome);
+        if (args.body) properties.hs_call_body = String(args.body);
+
+        const callData = await hubspot('/crm/v3/objects/calls', 'POST', { properties }) as { id: string; properties: Record<string, unknown> };
+
+        // Associate with contact
+        await hubspot(`/crm/v3/objects/calls/${callData.id}/associations/contacts/${contactId}/call_to_contact`, 'PUT');
+
+        return {
+          success: true,
+          callId: callData.id,
+          contactId,
+          properties: callData.properties,
+        };
+      }
+
+      case 'hubspot_log_meeting': {
+        const contactId = String(args.contactId);
+        const now = new Date().toISOString();
+        const startTime = args.startTime ? String(args.startTime) : now;
+        const endTime = args.endTime ? String(args.endTime) : new Date(Date.now() + 30 * 60 * 1000).toISOString(); // Default: 30 min
+
+        const properties: Record<string, string> = {
+          hs_meeting_title: String(args.title),
+          hs_timestamp: startTime,
+          hs_meeting_start_time: startTime,
+          hs_meeting_end_time: endTime,
+          hs_meeting_outcome: String(args.outcome || 'COMPLETED'),
+        };
+        if (args.body) properties.hs_meeting_body = String(args.body);
+
+        const meetingData = await hubspot('/crm/v3/objects/meetings', 'POST', { properties }) as { id: string; properties: Record<string, unknown> };
+
+        // Associate with contact
+        await hubspot(`/crm/v3/objects/meetings/${meetingData.id}/associations/contacts/${contactId}/meeting_to_contact`, 'PUT');
+
+        return {
+          success: true,
+          meetingId: meetingData.id,
+          contactId,
+          properties: meetingData.properties,
+        };
+      }
+
       // Tasks
       case 'hubspot_create_task': {
         const contactId = String(args.contactId);
@@ -921,6 +1132,18 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
           contactId,
           properties: taskData.properties,
         };
+      }
+
+      case 'hubspot_get_task': {
+        const taskId = String(args.taskId);
+        const params = new URLSearchParams();
+        if (Array.isArray(args.properties)) {
+          args.properties.forEach((p) => params.append('properties', String(p)));
+        } else {
+          // Default task properties
+          ['hs_task_subject', 'hs_task_body', 'hs_task_status', 'hs_task_priority', 'hs_timestamp', 'hubspot_owner_id'].forEach(p => params.append('properties', p));
+        }
+        return hubspot(`/crm/v3/objects/tasks/${taskId}?${params}`);
       }
 
       case 'hubspot_search_tasks': {
@@ -980,7 +1203,28 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
         };
       }
 
+      case 'hubspot_delete_task':
+        await hubspot(`/crm/v3/objects/tasks/${args.taskId}`, 'DELETE');
+        return { success: true, deleted: args.taskId };
+
       // Deals
+      case 'hubspot_list_deals': {
+        const params = new URLSearchParams();
+        params.set('limit', String(Math.min(Number(args.limit) || DEFAULT_MAX_RESULTS, 100)));
+        if (args.after) params.set('after', String(args.after));
+        if (Array.isArray(args.properties)) {
+          args.properties.forEach((p) => params.append('properties', String(p)));
+        } else {
+          // Default properties for deals
+          ['dealname', 'amount', 'dealstage', 'pipeline', 'closedate', 'hubspot_owner_id'].forEach(p => params.append('properties', p));
+        }
+        const data = await hubspot(`/crm/v3/objects/deals?${params}`) as { results: Record<string, unknown>[]; paging?: unknown };
+        return {
+          results: data.results.map(d => ({ id: (d as { id: string }).id, properties: (d as { properties: unknown }).properties })),
+          paging: data.paging,
+        };
+      }
+
       case 'hubspot_get_deal': {
         const params = new URLSearchParams();
         if (Array.isArray(args.properties)) {
@@ -1101,6 +1345,59 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
           label: p.label,
           stages: p.stages.map(s => ({ id: s.id, label: s.label, displayOrder: s.displayOrder })),
         }));
+      }
+
+      // Associations
+      case 'hubspot_get_associations': {
+        const fromType = String(args.fromObjectType);
+        const fromId = String(args.fromObjectId);
+        const toType = String(args.toObjectType);
+
+        const data = await hubspot(`/crm/v4/objects/${fromType}/${fromId}/associations/${toType}`) as { results: Array<{ toObjectId: string; associationTypes: Array<{ category: string; typeId: number; label: string }> }> };
+
+        return {
+          fromObjectType: fromType,
+          fromObjectId: fromId,
+          toObjectType: toType,
+          associations: data.results.map(r => ({
+            toObjectId: r.toObjectId,
+            associationTypes: r.associationTypes,
+          })),
+        };
+      }
+
+      case 'hubspot_create_association': {
+        const fromType = String(args.fromObjectType);
+        const fromId = String(args.fromObjectId);
+        const toType = String(args.toObjectType);
+        const toId = String(args.toObjectId);
+
+        // Determine association type label based on object types
+        const associationLabel = `${fromType.slice(0, -1)}_to_${toType.slice(0, -1)}`;
+
+        await hubspot(`/crm/v3/objects/${fromType}/${fromId}/associations/${toType}/${toId}/${associationLabel}`, 'PUT');
+
+        return {
+          success: true,
+          fromObjectType: fromType,
+          fromObjectId: fromId,
+          toObjectType: toType,
+          toObjectId: toId,
+        };
+      }
+
+      case 'hubspot_delete_association': {
+        const fromType = String(args.fromObjectType);
+        const fromId = String(args.fromObjectId);
+        const toType = String(args.toObjectType);
+        const toId = String(args.toObjectId);
+
+        await hubspot(`/crm/v4/objects/${fromType}/${fromId}/associations/${toType}/${toId}`, 'DELETE');
+
+        return {
+          success: true,
+          deleted: { fromObjectType: fromType, fromObjectId: fromId, toObjectType: toType, toObjectId: toId },
+        };
       }
 
       default:
