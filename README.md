@@ -101,4 +101,4 @@ Add to your MCP client config (e.g., Claude Desktop):
 
 ## License
 
-Private - Duvo/Taskcrew
+MIT
