@@ -2,7 +2,52 @@
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Ftaskcrew%2Fhubspot-crm-mcp&env=HUBSPOT_ACCESS_TOKEN)
 
-MCP (Model Context Protocol) server for HubSpot CRM, deployed as a Vercel serverless function.
+MCP server that gives Claude Code and Claude Cowork full access to your HubSpot CRM. Deploy to Vercel in one click, add to your MCP config, and start managing contacts, companies, deals, and more through natural language.
+
+## Quick Start
+
+### 1. Deploy to Vercel
+
+Click the button above, or:
+
+```bash
+git clone https://github.com/taskcrew/hubspot-crm-mcp
+cd hubspot-crm-mcp
+vercel --prod
+```
+
+### 2. Get HubSpot Token
+
+Create a [HubSpot private app](https://developers.hubspot.com/docs/api/private-apps) with these scopes:
+
+| Scope | Required For |
+|-------|--------------|
+| `crm.objects.contacts.read` | Contacts, engagements, tasks, notes |
+| `crm.objects.contacts.write` | Creating/updating contacts, tasks, notes |
+| `crm.objects.companies.read` | Reading companies |
+| `crm.objects.companies.write` | Creating/updating/deleting companies |
+| `crm.objects.deals.read` | Reading deals and pipelines |
+| `crm.objects.deals.write` | Creating/updating deals |
+| `crm.objects.owners.read` | Listing owners |
+| `sales-email-read` | Reading email engagement history |
+
+Add the token to Vercel: Project Settings → Environment Variables → `HUBSPOT_ACCESS_TOKEN`
+
+### 3. Configure Claude Code
+
+Add to your `.mcp.json` (project-level) or `~/.claude/mcp.json` (global):
+
+```json
+{
+  "mcpServers": {
+    "hubspot-crm": {
+      "url": "https://your-deployment.vercel.app/mcp"
+    }
+  }
+}
+```
+
+Restart Claude Code or run `/mcp` to connect.
 
 ## Features
 
@@ -22,58 +67,6 @@ Results are compacted by default to reduce token usage:
 - Long text fields truncated at 500 chars
 - Metadata fields excluded unless requested
 - Client-side filtering for contacts by company/job title
-
-## Setup
-
-### Prerequisites
-
-- Node.js 18+
-- Vercel CLI (`npm i -g vercel`)
-- HubSpot private app token with CRM scopes
-
-### Installation
-
-```bash
-npm install
-```
-
-### Environment Variables
-
-Create `.env.local` for local development:
-
-```
-HUBSPOT_ACCESS_TOKEN=pat-xxx
-```
-
-For production, set in Vercel dashboard.
-
-### Development
-
-```bash
-vercel dev
-```
-
-Server runs at `http://localhost:3000/mcp`
-
-### Deployment
-
-```bash
-vercel --prod
-```
-
-## MCP Configuration
-
-Add to your MCP client config (e.g., Claude Desktop):
-
-```json
-{
-  "mcpServers": {
-    "hubspot-crm": {
-      "url": "https://your-deployment.vercel.app/mcp"
-    }
-  }
-}
-```
 
 ## Available Tools
 
@@ -119,22 +112,17 @@ Add to your MCP client config (e.g., Claude Desktop):
 | `hubspot_create_association` | Create association between objects |
 | `hubspot_delete_association` | Remove association between objects |
 
-## Required HubSpot Scopes
+## Development
 
-Your HubSpot private app needs the following scopes:
+For local testing:
 
-| Scope | Required For |
-|-------|--------------|
-| `crm.objects.contacts.read` | Contacts, engagements, tasks, notes |
-| `crm.objects.contacts.write` | Creating/updating contacts, tasks, notes |
-| `crm.objects.companies.read` | Reading companies |
-| `crm.objects.companies.write` | Creating/updating/deleting companies |
-| `crm.objects.deals.read` | Reading deals and pipelines |
-| `crm.objects.deals.write` | Creating/updating deals |
-| `crm.objects.owners.read` | Listing owners |
-| `sales-email-read` | Reading email engagement history |
+```bash
+npm install
+echo "HUBSPOT_ACCESS_TOKEN=pat-xxx" > .env.local
+vercel dev
+```
 
-Note: Tasks and notes use the CRM v3 objects API and typically work with contacts scopes. If you encounter permission errors, check [HubSpot's scope documentation](https://developers.hubspot.com/docs/api/scopes) for your specific tier.
+Server runs at `http://localhost:3000/mcp`
 
 ## License
 
