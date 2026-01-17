@@ -1096,8 +1096,8 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
 
         const meetingData = await hubspot('/crm/v3/objects/meetings', 'POST', { properties }) as { id: string; properties: Record<string, unknown> };
 
-        // Associate with contact
-        await hubspot(`/crm/v3/objects/meetings/${meetingData.id}/associations/contacts/${contactId}/meeting_to_contact`, 'PUT');
+        // Associate with contact (type 200 = meeting to contact)
+        await hubspot(`/crm/v3/objects/meetings/${meetingData.id}/associations/contacts/${contactId}/200`, 'PUT');
 
         return {
           success: true,
