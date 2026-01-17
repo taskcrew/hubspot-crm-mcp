@@ -99,6 +99,8 @@ Add to your MCP client config (e.g., Claude Desktop):
 | `hubspot_log_email` | Log email to contact timeline |
 | `hubspot_log_call` | Log a call with a contact |
 | `hubspot_log_meeting` | Log a meeting with a contact |
+| `hubspot_delete_call` | Delete a call record |
+| `hubspot_delete_meeting` | Delete a meeting record |
 | `hubspot_create_note` | Create note on contact |
 | `hubspot_get_task` | Get task by ID |
 | `hubspot_create_task` | Create task linked to contact |
