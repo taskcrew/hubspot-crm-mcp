@@ -1,5 +1,7 @@
 # HubSpot CRM MCP Server
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Ftaskcrew%2Fhubspot-crm-mcp&env=HUBSPOT_ACCESS_TOKEN)
+
 MCP (Model Context Protocol) server for HubSpot CRM, deployed as a Vercel serverless function.
 
 ## Features
