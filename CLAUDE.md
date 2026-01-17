@@ -39,6 +39,7 @@ POST /mcp → vercel.json rewrite → /api/mcp.ts
 | Owners | `list_owners`, `get_owner` |
 | Engagements | `get_engagements`, `log_email`, `create_note` |
 | Tasks | `create_task`, `search_tasks`, `update_task` |
+| Deals | `get_deal`, `create_deal`, `update_deal`, `search_deals`, `deal_properties`, `list_pipelines` |
 
 ### Response Optimization
 

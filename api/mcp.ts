@@ -563,6 +563,95 @@ const TOOLS = [
       required: ['taskId'],
     },
   },
+  // Deals
+  {
+    name: 'hubspot_get_deal',
+    description: 'Get a single deal by ID. Returns full deal details including all properties.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Deal ID' },
+        properties: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Properties to return (e.g., dealname, amount, closedate, dealstage)',
+        },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'hubspot_create_deal',
+    description: 'Create a new deal (sales opportunity). Can be associated with contacts and/or companies.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dealname: { type: 'string', description: 'Name of the deal (required)' },
+        amount: { type: 'string', description: 'Deal amount/value' },
+        closedate: { type: 'string', description: 'Expected close date (ISO 8601 timestamp)' },
+        pipeline: { type: 'string', description: 'Pipeline ID. Use hubspot_list_pipelines to get available pipelines.' },
+        dealstage: { type: 'string', description: 'Stage ID within the pipeline. Use hubspot_list_pipelines to get stage IDs.' },
+        ownerId: { type: 'string', description: 'Owner ID to assign the deal. Use hubspot_list_owners to get IDs.' },
+        contactId: { type: 'string', description: 'Contact ID to associate with this deal' },
+        companyId: { type: 'string', description: 'Company ID to associate with this deal' },
+      },
+      required: ['dealname'],
+    },
+  },
+  {
+    name: 'hubspot_update_deal',
+    description: 'Update an existing deal. Use this to move deals through pipeline stages, update amounts, or change close dates.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Deal ID to update' },
+        dealname: { type: 'string', description: 'New deal name' },
+        amount: { type: 'string', description: 'New deal amount' },
+        closedate: { type: 'string', description: 'New close date (ISO 8601 timestamp)' },
+        dealstage: { type: 'string', description: 'New stage ID to move the deal to' },
+        ownerId: { type: 'string', description: 'New owner ID' },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'hubspot_search_deals',
+    description: 'Search deals with filters. Use this to find deals by owner, stage, close date, or amount. Great for "deals closing this month" or "my open deals" queries.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Free-text search query' },
+        ownerId: { type: 'string', description: 'Filter by owner ID' },
+        dealstage: { type: 'string', description: 'Filter by stage ID' },
+        pipeline: { type: 'string', description: 'Filter by pipeline ID' },
+        closeAfter: { type: 'string', description: 'Filter deals closing after this date (ISO 8601)' },
+        closeBefore: { type: 'string', description: 'Filter deals closing before this date (ISO 8601)' },
+        minAmount: { type: 'string', description: 'Filter deals with amount >= this value' },
+        properties: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Properties to return',
+        },
+        limit: { type: 'number', description: 'Max results (1-100, default: 20)', default: 20 },
+      },
+    },
+  },
+  {
+    name: 'hubspot_deal_properties',
+    description: 'List all available deal properties. Use this to discover property names for searching/filtering deals.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
+  {
+    name: 'hubspot_list_pipelines',
+    description: 'List all deal pipelines and their stages. Use this to get valid pipeline and stage IDs for creating/updating deals.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+    },
+  },
 ];
 
 // Tool handler
@@ -878,6 +967,125 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
           taskId: taskData.id,
           properties: taskData.properties,
         };
+      }
+
+      // Deals
+      case 'hubspot_get_deal': {
+        const params = new URLSearchParams();
+        if (Array.isArray(args.properties)) {
+          args.properties.forEach((p) => params.append('properties', String(p)));
+        }
+        return hubspot(`/crm/v3/objects/deals/${args.id}?${params}`);
+      }
+
+      case 'hubspot_create_deal': {
+        const properties: Record<string, string> = {
+          dealname: String(args.dealname),
+        };
+        if (args.amount) properties.amount = String(args.amount);
+        if (args.closedate) properties.closedate = String(args.closedate);
+        if (args.pipeline) properties.pipeline = String(args.pipeline);
+        if (args.dealstage) properties.dealstage = String(args.dealstage);
+        if (args.ownerId) properties.hubspot_owner_id = String(args.ownerId);
+
+        const dealData = await hubspot('/crm/v3/objects/deals', 'POST', { properties }) as { id: string; properties: Record<string, unknown> };
+
+        // Associate with contact if provided
+        if (args.contactId) {
+          await hubspot(`/crm/v3/objects/deals/${dealData.id}/associations/contacts/${args.contactId}/deal_to_contact`, 'PUT');
+        }
+
+        // Associate with company if provided
+        if (args.companyId) {
+          await hubspot(`/crm/v3/objects/deals/${dealData.id}/associations/companies/${args.companyId}/deal_to_company`, 'PUT');
+        }
+
+        return {
+          success: true,
+          dealId: dealData.id,
+          properties: dealData.properties,
+          associations: {
+            contactId: args.contactId || null,
+            companyId: args.companyId || null,
+          },
+        };
+      }
+
+      case 'hubspot_update_deal': {
+        const dealId = String(args.id);
+        const properties: Record<string, string> = {};
+
+        if (args.dealname) properties.dealname = String(args.dealname);
+        if (args.amount) properties.amount = String(args.amount);
+        if (args.closedate) properties.closedate = String(args.closedate);
+        if (args.dealstage) properties.dealstage = String(args.dealstage);
+        if (args.ownerId) properties.hubspot_owner_id = String(args.ownerId);
+
+        if (Object.keys(properties).length === 0) {
+          throw new Error('At least one property to update must be provided');
+        }
+
+        const dealData = await hubspot(`/crm/v3/objects/deals/${dealId}`, 'PATCH', { properties }) as { id: string; properties: Record<string, unknown> };
+
+        return {
+          success: true,
+          dealId: dealData.id,
+          properties: dealData.properties,
+        };
+      }
+
+      case 'hubspot_search_deals': {
+        const filters: Array<{ propertyName: string; operator: string; value: string }> = [];
+
+        if (args.ownerId) {
+          filters.push({ propertyName: 'hubspot_owner_id', operator: 'EQ', value: String(args.ownerId) });
+        }
+        if (args.dealstage) {
+          filters.push({ propertyName: 'dealstage', operator: 'EQ', value: String(args.dealstage) });
+        }
+        if (args.pipeline) {
+          filters.push({ propertyName: 'pipeline', operator: 'EQ', value: String(args.pipeline) });
+        }
+        if (args.closeAfter) {
+          filters.push({ propertyName: 'closedate', operator: 'GTE', value: String(args.closeAfter) });
+        }
+        if (args.closeBefore) {
+          filters.push({ propertyName: 'closedate', operator: 'LTE', value: String(args.closeBefore) });
+        }
+        if (args.minAmount) {
+          filters.push({ propertyName: 'amount', operator: 'GTE', value: String(args.minAmount) });
+        }
+
+        const body: Record<string, unknown> = {
+          limit: Math.min(Number(args.limit) || DEFAULT_MAX_RESULTS, 100),
+          properties: Array.isArray(args.properties) ? args.properties : ['dealname', 'amount', 'closedate', 'dealstage', 'pipeline', 'hubspot_owner_id'],
+          sorts: [{ propertyName: 'closedate', direction: 'ASCENDING' }],
+        };
+        if (args.query) body.query = args.query;
+        if (filters.length > 0) {
+          body.filterGroups = [{ filters }];
+        }
+
+        const data = await hubspot('/crm/v3/objects/deals/search', 'POST', body) as { results: Record<string, unknown>[]; total?: number; paging?: unknown };
+        return {
+          total: data.total,
+          results: data.results.map(d => ({ id: (d as { id: string }).id, properties: (d as { properties: unknown }).properties })),
+          paging: data.paging,
+        };
+      }
+
+      case 'hubspot_deal_properties': {
+        const data = await hubspot('/crm/v3/properties/deals') as { results: Array<{ name: string; label: string; type: string; description: string }> };
+        return data.results.map((p) => ({ name: p.name, label: p.label, type: p.type, description: p.description }));
+      }
+
+      case 'hubspot_list_pipelines': {
+        const data = await hubspot('/crm/v3/pipelines/deals') as { results: Array<{ id: string; label: string; stages: Array<{ id: string; label: string; displayOrder: number }> }> };
+        return data.results.map((p) => ({
+          id: p.id,
+          label: p.label,
+          stages: p.stages.map(s => ({ id: s.id, label: s.label, displayOrder: s.displayOrder })),
+        }));
       }
 
       default:

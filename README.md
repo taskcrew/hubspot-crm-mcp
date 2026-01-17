@@ -8,10 +8,12 @@ MCP (Model Context Protocol) server for HubSpot CRM, deployed as a Vercel server
 
 - **Contacts**: List, get, create, update, delete, search contacts
 - **Companies**: List, get, create, update, delete, search companies
+- **Deals**: Get, create, update, search deals with pipeline/stage management
 - **Tasks**: Create, search, update tasks (follow-up reminders)
 - **Engagements**: Get engagement history, log emails, create notes
 - **Owners**: List and get HubSpot users
-- **Properties**: Discover available contact/company properties
+- **Properties**: Discover available contact/company/deal properties
+- **Pipelines**: List deal pipelines and stages
 
 ### Response Optimization
 
@@ -98,6 +100,27 @@ Add to your MCP client config (e.g., Claude Desktop):
 | `hubspot_create_task` | Create task linked to contact |
 | `hubspot_search_tasks` | Search tasks by owner/status/date |
 | `hubspot_update_task` | Update task (mark complete, etc.) |
+| `hubspot_get_deal` | Get deal by ID |
+| `hubspot_create_deal` | Create deal with contact/company associations |
+| `hubspot_update_deal` | Update deal properties |
+| `hubspot_search_deals` | Search deals by owner/stage/pipeline/amount |
+| `hubspot_deal_properties` | List deal property schema |
+| `hubspot_list_pipelines` | List deal pipelines and stages |
+
+## Required HubSpot Scopes
+
+Your HubSpot private app needs the following scopes:
+
+| Scope | Required For |
+|-------|--------------|
+| `crm.objects.contacts.read` | Reading contacts |
+| `crm.objects.contacts.write` | Creating/updating/deleting contacts |
+| `crm.objects.companies.read` | Reading companies |
+| `crm.objects.companies.write` | Creating/updating/deleting companies |
+| `crm.objects.deals.read` | Reading deals and pipelines |
+| `crm.objects.deals.write` | Creating/updating deals |
+| `crm.objects.owners.read` | Listing owners |
+| `sales-email-read` | Reading engagement history |
 
 ## License
 
