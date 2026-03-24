@@ -3,7 +3,17 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 const HUBSPOT_API = 'https://api.hubapi.com';
 const MCP_VERSION = '2024-11-05';
 const SERVER_NAME = 'hubspot-crm-mcp';
-const SERVER_VERSION = '1.4.0';
+const SERVER_VERSION = '1.5.0';
+
+// Association type IDs for HubSpot v4 associations API
+const ASSOCIATION_TYPE_MAP: Record<string, number> = {
+  'contacts_to_deals': 4,
+  'deals_to_contacts': 3,
+  'contacts_to_companies': 1,
+  'companies_to_contacts': 2,
+  'deals_to_companies': 5,
+  'companies_to_deals': 6,
+};
 
 // Response optimization defaults
 const DEFAULT_MAX_RESULTS = 20;
@@ -462,11 +472,12 @@ const TOOLS = [
   },
   {
     name: 'hubspot_log_email',
-    description: 'Log an email that was sent to a contact. Use this to record outbound emails in HubSpot CRM, maintaining a complete communication history. The email will appear in the contact timeline.',
+    description: 'Log an email associated with a contact and/or deal. Use this to record emails in HubSpot CRM, maintaining a complete communication history. The email will appear in the associated record timelines.',
     inputSchema: {
       type: 'object',
       properties: {
         contactId: { type: 'string', description: 'The HubSpot contact ID to associate the email with' },
+        dealId: { type: 'string', description: 'The HubSpot deal ID to associate the email with (optional)' },
         subject: { type: 'string', description: 'Email subject line' },
         body: { type: 'string', description: 'Email body content (HTML or plain text)' },
         direction: {
@@ -485,18 +496,20 @@ const TOOLS = [
   },
   {
     name: 'hubspot_create_note',
-    description: 'Create a note on a contact record. Use this to log important information, meeting summaries, or any context about interactions with a contact. The note will appear in the contact timeline.',
+    description: 'Create a note and attach it to a contact, deal, and/or company. Use this to log important information, meeting summaries, or any context. The note will appear in the associated record timelines.',
     inputSchema: {
       type: 'object',
       properties: {
-        contactId: { type: 'string', description: 'The HubSpot contact ID to attach the note to' },
+        contactId: { type: 'string', description: 'The HubSpot contact ID to attach the note to (optional if dealId or companyId provided)' },
+        dealId: { type: 'string', description: 'The HubSpot deal ID to attach the note to (optional)' },
+        companyId: { type: 'string', description: 'The HubSpot company ID to attach the note to (optional)' },
         body: { type: 'string', description: 'Note content (supports plain text)' },
         timestamp: {
           type: 'string',
           description: 'ISO 8601 timestamp for the note. Defaults to current time. Example: "2024-01-15T10:30:00Z"',
         },
       },
-      required: ['contactId', 'body'],
+      required: ['body'],
     },
   },
   {
@@ -775,6 +788,41 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {},
+    },
+  },
+  // Deal-specific tools
+  {
+    name: 'hubspot_search_deals_by_stage',
+    description: 'Search for all deals in a specific pipeline stage. Returns deals with their properties. Use hubspot_list_pipelines to discover valid stage IDs.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dealstage: { type: 'string', description: 'The deal stage internal ID (e.g., "presentationscheduled", "qualifiedtobuy", "closedwon")' },
+        properties: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Properties to return (defaults to dealname, amount, closedate, pipeline, hubspot_owner_id)',
+        },
+        limit: { type: 'number', description: 'Max results (1-100, default: 50)', default: 50 },
+      },
+      required: ['dealstage'],
+    },
+  },
+  {
+    name: 'hubspot_get_deal_activities',
+    description: 'Get recent activities (notes, emails, calls, meetings) associated with a deal. Use this to review deal engagement history.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dealId: { type: 'string', description: 'The HubSpot deal ID' },
+        types: {
+          type: 'array',
+          items: { type: 'string', enum: ['notes', 'emails', 'calls', 'meetings'] },
+          description: 'Filter by activity types. If not specified, returns all types.',
+        },
+        limit: { type: 'number', description: 'Max results per activity type (default: 20)', default: 20 },
+      },
+      required: ['dealId'],
     },
   },
   // Associations
@@ -1178,20 +1226,33 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
           },
         }) as { id: string; properties: Record<string, unknown> };
 
-        // Associate the email with the contact using v3 API (email_to_contact association type)
+        // Associate the email with the contact
         await hubspot(`/crm/v3/objects/emails/${emailData.id}/associations/contacts/${contactId}/email_to_contact`, 'PUT');
+
+        const associations: Record<string, string> = { contactId };
+
+        // Associate with deal if provided
+        if (args.dealId) {
+          await hubspot(`/crm/v4/objects/emails/${emailData.id}/associations/deals/${args.dealId}`, 'PUT', [
+            { associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 210 },
+          ]);
+          associations.dealId = String(args.dealId);
+        }
 
         return {
           success: true,
           emailId: emailData.id,
-          contactId,
+          associations,
           properties: emailData.properties,
         };
       }
 
       case 'hubspot_create_note': {
-        const contactId = String(args.contactId);
         const timestamp = args.timestamp ? String(args.timestamp) : new Date().toISOString();
+
+        if (!args.contactId && !args.dealId && !args.companyId) {
+          throw new Error('At least one of contactId, dealId, or companyId must be provided');
+        }
 
         // Create the note object
         const noteData = await hubspot('/crm/v3/objects/notes', 'POST', {
@@ -1201,13 +1262,34 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
           },
         }) as { id: string; properties: Record<string, unknown> };
 
-        // Associate the note with the contact using v3 API (note_to_contact association type)
-        await hubspot(`/crm/v3/objects/notes/${noteData.id}/associations/contacts/${contactId}/note_to_contact`, 'PUT');
+        const associations: Record<string, string> = {};
+
+        // Associate with contact if provided
+        if (args.contactId) {
+          await hubspot(`/crm/v3/objects/notes/${noteData.id}/associations/contacts/${args.contactId}/note_to_contact`, 'PUT');
+          associations.contactId = String(args.contactId);
+        }
+
+        // Associate with deal if provided
+        if (args.dealId) {
+          await hubspot(`/crm/v4/objects/notes/${noteData.id}/associations/deals/${args.dealId}`, 'PUT', [
+            { associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 214 },
+          ]);
+          associations.dealId = String(args.dealId);
+        }
+
+        // Associate with company if provided
+        if (args.companyId) {
+          await hubspot(`/crm/v4/objects/notes/${noteData.id}/associations/companies/${args.companyId}`, 'PUT', [
+            { associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 190 },
+          ]);
+          associations.companyId = String(args.companyId);
+        }
 
         return {
           success: true,
           noteId: noteData.id,
-          contactId,
+          associations,
           properties: noteData.properties,
         };
       }
@@ -1513,6 +1595,71 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
         }));
       }
 
+      // Deal-specific tools
+      case 'hubspot_search_deals_by_stage': {
+        const dealstage = String(args.dealstage);
+        const limit = Math.min(Number(args.limit) || 50, 100);
+        const properties = Array.isArray(args.properties) ? args.properties as string[] : ['dealname', 'amount', 'closedate', 'dealstage', 'pipeline', 'hubspot_owner_id'];
+
+        const body = {
+          filterGroups: [{ filters: [{ propertyName: 'dealstage', operator: 'EQ', value: dealstage }] }],
+          properties,
+          sorts: [{ propertyName: 'closedate', direction: 'ASCENDING' }],
+          limit,
+        };
+
+        const data = await hubspot('/crm/v3/objects/deals/search', 'POST', body) as { results: Record<string, unknown>[]; total?: number; paging?: unknown };
+        return {
+          dealstage,
+          total: data.total,
+          results: data.results.map(d => ({ id: (d as { id: string }).id, properties: (d as { properties: unknown }).properties })),
+          paging: data.paging,
+        };
+      }
+
+      case 'hubspot_get_deal_activities': {
+        const dealId = String(args.dealId);
+        const limit = Math.min(Number(args.limit) || DEFAULT_MAX_RESULTS, 100);
+        const allTypes = ['notes', 'emails', 'calls', 'meetings'];
+        const requestedTypes = Array.isArray(args.types) ? args.types as string[] : allTypes;
+        const typesToFetch = requestedTypes.filter(t => allTypes.includes(t));
+
+        const activities: Record<string, unknown[]> = {};
+
+        await Promise.all(typesToFetch.map(async (type) => {
+          try {
+            const associations = await hubspot(`/crm/v4/objects/deals/${dealId}/associations/${type}`) as { results: Array<{ toObjectId: string }> };
+
+            if (associations.results && associations.results.length > 0) {
+              const objectIds = associations.results.slice(0, limit).map(a => a.toObjectId);
+
+              const batchResponse = await hubspot(`/crm/v3/objects/${type}/batch/read`, 'POST', {
+                inputs: objectIds.map(id => ({ id })),
+                properties: type === 'notes' ? ['hs_note_body', 'hs_timestamp', 'hs_createdate']
+                  : type === 'emails' ? ['hs_email_subject', 'hs_email_text', 'hs_email_direction', 'hs_timestamp', 'hs_createdate']
+                  : type === 'calls' ? ['hs_call_title', 'hs_call_body', 'hs_call_duration', 'hs_call_direction', 'hs_timestamp', 'hs_createdate']
+                  : ['hs_meeting_title', 'hs_meeting_body', 'hs_meeting_start_time', 'hs_meeting_end_time', 'hs_createdate'],
+              }) as { results: Array<{ id: string; properties: Record<string, unknown> }> };
+
+              activities[type] = batchResponse.results.map(e => ({
+                id: e.id,
+                properties: e.properties,
+              }));
+            } else {
+              activities[type] = [];
+            }
+          } catch {
+            activities[type] = [];
+          }
+        }));
+
+        return {
+          dealId,
+          activities,
+          _meta: { typesRequested: typesToFetch },
+        };
+      }
+
       // Associations
       case 'hubspot_get_associations': {
         const fromType = String(args.fromObjectType);
@@ -1538,10 +1685,17 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
         const toType = String(args.toObjectType);
         const toId = String(args.toObjectId);
 
-        // Determine association type label based on object types
-        const associationLabel = `${fromType.slice(0, -1)}_to_${toType.slice(0, -1)}`;
+        // Use v4 associations API with explicit association type IDs
+        const typeKey = `${fromType}_to_${toType}`;
+        const associationTypeId = ASSOCIATION_TYPE_MAP[typeKey];
 
-        await hubspot(`/crm/v3/objects/${fromType}/${fromId}/associations/${toType}/${toId}/${associationLabel}`, 'PUT');
+        if (!associationTypeId) {
+          throw new Error(`Unsupported association: ${fromType} -> ${toType}. Supported: ${Object.keys(ASSOCIATION_TYPE_MAP).join(', ')}`);
+        }
+
+        await hubspot(`/crm/v4/objects/${fromType}/${fromId}/associations/${toType}/${toId}`, 'PUT', [
+          { associationCategory: 'HUBSPOT_DEFINED', associationTypeId },
+        ]);
 
         return {
           success: true,
@@ -1549,6 +1703,7 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
           fromObjectId: fromId,
           toObjectType: toType,
           toObjectId: toId,
+          associationTypeId,
         };
       }
 
