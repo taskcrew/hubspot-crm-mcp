@@ -455,11 +455,12 @@ const TOOLS = [
   // Engagements
   {
     name: 'hubspot_get_engagements',
-    description: 'Fetch engagement history for a contact. Returns notes, emails, calls, meetings, and tasks associated with the contact. Use this to review communication history before reaching out, or to understand the relationship context with a contact.',
+    description: 'Fetch engagement history for a contact or deal. Returns notes, emails, calls, meetings, and tasks associated with the record. Provide either contactId or dealId (not both). Use this to review communication history before reaching out, or to understand the relationship context.',
     inputSchema: {
       type: 'object',
       properties: {
         contactId: { type: 'string', description: 'The HubSpot contact ID to fetch engagements for' },
+        dealId: { type: 'string', description: 'The HubSpot deal ID to fetch engagements for' },
         types: {
           type: 'array',
           items: { type: 'string', enum: ['notes', 'emails', 'calls', 'meetings', 'tasks'] },
@@ -467,7 +468,6 @@ const TOOLS = [
         },
         limit: { type: 'number', description: 'Max results per engagement type (default: 20)', default: 20 },
       },
-      required: ['contactId'],
     },
   },
   {
@@ -581,6 +581,17 @@ const TOOLS = [
         meetingId: { type: 'string', description: 'The meeting ID to delete' },
       },
       required: ['meetingId'],
+    },
+  },
+  {
+    name: 'hubspot_delete_note',
+    description: 'Delete a note record. This action is permanent.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        noteId: { type: 'string', description: 'The note ID to delete' },
+      },
+      required: ['noteId'],
     },
   },
   // Tasks
@@ -1038,9 +1049,9 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
         const params = new URLSearchParams();
         params.set('limit', String(Math.min(Number(args.limit) || DEFAULT_MAX_RESULTS, 100)));
         if (args.after) params.set('after', String(args.after));
-        if (Array.isArray(args.properties)) {
-          args.properties.forEach((p) => params.append('properties', String(p)));
-        }
+        const defaultContactProps = ['email', 'firstname', 'lastname', 'company', 'jobtitle', 'phone', 'lifecyclestage', 'hs_lead_status', 'hs_last_sales_activity_date'];
+        const propsToRequest = Array.isArray(args.properties) && args.properties.length > 0 ? args.properties as string[] : defaultContactProps;
+        propsToRequest.forEach((p) => params.append('properties', String(p)));
         const data = await hubspot(`/crm/v3/objects/contacts?${params}`) as { results: Record<string, unknown>[]; paging?: unknown };
 
         // Apply exclude filters
@@ -1075,10 +1086,11 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
         return hubspot(`/crm/v3/objects/contacts/${args.id}`, 'DELETE');
 
       case 'hubspot_search_contacts': {
+        const defaultSearchProps = ['email', 'firstname', 'lastname', 'company', 'jobtitle', 'phone', 'lifecyclestage', 'hs_lead_status', 'hs_last_sales_activity_date'];
         const body: Record<string, unknown> = { limit: Math.min(Number(args.limit) || DEFAULT_MAX_RESULTS, 100) };
         if (args.query) body.query = args.query;
         if (args.filterGroups) body.filterGroups = args.filterGroups;
-        if (Array.isArray(args.properties)) body.properties = args.properties;
+        body.properties = Array.isArray(args.properties) && args.properties.length > 0 ? args.properties : defaultSearchProps;
         if (Array.isArray(args.sorts)) body.sorts = args.sorts;
         const data = await hubspot('/crm/v3/objects/contacts/search', 'POST', body) as { results: Record<string, unknown>[]; total?: number; paging?: unknown };
 
@@ -1164,7 +1176,15 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
 
       // Engagements
       case 'hubspot_get_engagements': {
-        const contactId = String(args.contactId);
+        const contactId = args.contactId ? String(args.contactId) : undefined;
+        const dealId = args.dealId ? String(args.dealId) : undefined;
+
+        if (!contactId && !dealId) {
+          throw new Error('Either contactId or dealId must be provided');
+        }
+
+        const objectType = contactId ? 'contacts' : 'deals';
+        const objectId = contactId || dealId!;
         const limit = Math.min(Number(args.limit) || DEFAULT_MAX_RESULTS, 100);
         const allTypes = ['notes', 'emails', 'calls', 'meetings', 'tasks'];
         const requestedTypes = Array.isArray(args.types) ? args.types as string[] : allTypes;
@@ -1176,7 +1196,7 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
         await Promise.all(typesToFetch.map(async (type) => {
           try {
             // Get associations for this engagement type
-            const associations = await hubspot(`/crm/v4/objects/contacts/${contactId}/associations/${type}`) as { results: Array<{ toObjectId: string }> };
+            const associations = await hubspot(`/crm/v4/objects/${objectType}/${objectId}/associations/${type}`) as { results: Array<{ toObjectId: string }> };
 
             if (associations.results && associations.results.length > 0) {
               // Get the actual engagement objects (limited)
@@ -1206,7 +1226,7 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
         }));
 
         return {
-          contactId,
+          ...(contactId ? { contactId } : { dealId }),
           engagements,
           _meta: { typesRequested: typesToFetch },
         };
@@ -1354,6 +1374,10 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
       case 'hubspot_delete_meeting':
         await hubspot(`/crm/v3/objects/meetings/${args.meetingId}`, 'DELETE');
         return { success: true, deleted: args.meetingId };
+
+      case 'hubspot_delete_note':
+        await hubspot(`/crm/v3/objects/notes/${args.noteId}`, 'DELETE');
+        return { success: true, deleted: args.noteId };
 
       // Tasks
       case 'hubspot_create_task': {
