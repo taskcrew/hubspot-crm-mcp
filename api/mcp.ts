@@ -514,11 +514,12 @@ const TOOLS = [
   },
   {
     name: 'hubspot_log_call',
-    description: 'Log a call with a contact. Use this to record phone calls in HubSpot CRM. The call will appear in the contact timeline.',
+    description: 'Log a call with a contact and/or deal. The call will appear in the associated record timelines.',
     inputSchema: {
       type: 'object',
       properties: {
-        contactId: { type: 'string', description: 'The HubSpot contact ID to associate the call with' },
+        contactId: { type: 'string', description: 'The HubSpot contact ID to associate the call with (optional if dealId provided)' },
+        dealId: { type: 'string', description: 'The HubSpot deal ID to associate the call with (optional)' },
         direction: {
           type: 'string',
           enum: ['INBOUND', 'OUTBOUND'],
@@ -537,16 +538,16 @@ const TOOLS = [
           description: 'ISO 8601 timestamp of when the call occurred. Defaults to current time.',
         },
       },
-      required: ['contactId'],
     },
   },
   {
     name: 'hubspot_log_meeting',
-    description: 'Log a meeting with a contact. Use this to record meetings in HubSpot CRM. The meeting will appear in the contact timeline.',
+    description: 'Log a meeting with a contact and/or deal. The meeting will appear in the associated record timelines.',
     inputSchema: {
       type: 'object',
       properties: {
-        contactId: { type: 'string', description: 'The HubSpot contact ID to associate the meeting with' },
+        contactId: { type: 'string', description: 'The HubSpot contact ID to associate the meeting with (optional if dealId provided)' },
+        dealId: { type: 'string', description: 'The HubSpot deal ID to associate the meeting with (optional)' },
         title: { type: 'string', description: 'Meeting title/subject' },
         body: { type: 'string', description: 'Meeting notes/description' },
         startTime: { type: 'string', description: 'ISO 8601 timestamp for meeting start time' },
@@ -558,7 +559,7 @@ const TOOLS = [
           default: 'COMPLETED',
         },
       },
-      required: ['contactId', 'title'],
+      required: ['title'],
     },
   },
   {
@@ -594,14 +595,27 @@ const TOOLS = [
       required: ['noteId'],
     },
   },
-  // Tasks
   {
-    name: 'hubspot_create_task',
-    description: 'Create a task (follow-up reminder) linked to a contact. Use this to schedule follow-ups after calls, emails, or meetings.',
+    name: 'hubspot_update_note',
+    description: 'Update an existing note body.',
     inputSchema: {
       type: 'object',
       properties: {
-        contactId: { type: 'string', description: 'The HubSpot contact ID to associate the task with' },
+        noteId: { type: 'string', description: 'The note ID to update' },
+        body: { type: 'string', description: 'New note content (replaces existing body)' },
+      },
+      required: ['noteId', 'body'],
+    },
+  },
+  // Tasks
+  {
+    name: 'hubspot_create_task',
+    description: 'Create a task (follow-up reminder) linked to a contact and/or deal. Use this to schedule follow-ups after calls, emails, or meetings.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        contactId: { type: 'string', description: 'The HubSpot contact ID to associate the task with (optional if dealId provided)' },
+        dealId: { type: 'string', description: 'The HubSpot deal ID to associate the task with (optional)' },
         subject: { type: 'string', description: 'Task subject/title (e.g., "Follow up on proposal")' },
         body: { type: 'string', description: 'Task notes/description (optional)' },
         dueDate: { type: 'string', description: 'ISO 8601 timestamp for when task is due. Example: "2024-01-20T09:00:00Z"' },
@@ -1315,7 +1329,9 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
       }
 
       case 'hubspot_log_call': {
-        const contactId = String(args.contactId);
+        if (!args.contactId && !args.dealId) {
+          throw new Error('At least one of contactId or dealId must be provided');
+        }
         const timestamp = args.timestamp ? String(args.timestamp) : new Date().toISOString();
 
         const properties: Record<string, string> = {
@@ -1328,19 +1344,31 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
 
         const callData = await hubspot('/crm/v3/objects/calls', 'POST', { properties }) as { id: string; properties: Record<string, unknown> };
 
-        // Associate with contact
-        await hubspot(`/crm/v3/objects/calls/${callData.id}/associations/contacts/${contactId}/call_to_contact`, 'PUT');
+        const associations: Record<string, string> = {};
+
+        if (args.contactId) {
+          await hubspot(`/crm/v3/objects/calls/${callData.id}/associations/contacts/${args.contactId}/call_to_contact`, 'PUT');
+          associations.contactId = String(args.contactId);
+        }
+        if (args.dealId) {
+          await hubspot(`/crm/v4/objects/calls/${callData.id}/associations/deals/${args.dealId}`, 'PUT', [
+            { associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 206 },
+          ]);
+          associations.dealId = String(args.dealId);
+        }
 
         return {
           success: true,
           callId: callData.id,
-          contactId,
+          associations,
           properties: callData.properties,
         };
       }
 
       case 'hubspot_log_meeting': {
-        const contactId = String(args.contactId);
+        if (!args.contactId && !args.dealId) {
+          throw new Error('At least one of contactId or dealId must be provided');
+        }
         const now = new Date().toISOString();
         const startTime = args.startTime ? String(args.startTime) : now;
         const endTime = args.endTime ? String(args.endTime) : new Date(Date.now() + 30 * 60 * 1000).toISOString(); // Default: 30 min
@@ -1356,13 +1384,23 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
 
         const meetingData = await hubspot('/crm/v3/objects/meetings', 'POST', { properties }) as { id: string; properties: Record<string, unknown> };
 
-        // Associate with contact (type 200 = meeting to contact)
-        await hubspot(`/crm/v3/objects/meetings/${meetingData.id}/associations/contacts/${contactId}/200`, 'PUT');
+        const associations: Record<string, string> = {};
+
+        if (args.contactId) {
+          await hubspot(`/crm/v3/objects/meetings/${meetingData.id}/associations/contacts/${args.contactId}/200`, 'PUT');
+          associations.contactId = String(args.contactId);
+        }
+        if (args.dealId) {
+          await hubspot(`/crm/v4/objects/meetings/${meetingData.id}/associations/deals/${args.dealId}`, 'PUT', [
+            { associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 212 },
+          ]);
+          associations.dealId = String(args.dealId);
+        }
 
         return {
           success: true,
           meetingId: meetingData.id,
-          contactId,
+          associations,
           properties: meetingData.properties,
         };
       }
@@ -1379,9 +1417,19 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
         await hubspot(`/crm/v3/objects/notes/${args.noteId}`, 'DELETE');
         return { success: true, deleted: args.noteId };
 
+      case 'hubspot_update_note': {
+        const noteId = String(args.noteId);
+        const noteData = await hubspot(`/crm/v3/objects/notes/${noteId}`, 'PATCH', {
+          properties: { hs_note_body: String(args.body) },
+        }) as { id: string; properties: Record<string, unknown> };
+        return { success: true, noteId, properties: noteData.properties };
+      }
+
       // Tasks
       case 'hubspot_create_task': {
-        const contactId = String(args.contactId);
+        if (!args.contactId && !args.dealId) {
+          throw new Error('At least one of contactId or dealId must be provided');
+        }
         const dueDate = args.dueDate ? String(args.dueDate) : new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // Default: tomorrow
 
         const properties: Record<string, string> = {
@@ -1395,13 +1443,23 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
 
         const taskData = await hubspot('/crm/v3/objects/tasks', 'POST', { properties }) as { id: string; properties: Record<string, unknown> };
 
-        // Associate with contact
-        await hubspot(`/crm/v3/objects/tasks/${taskData.id}/associations/contacts/${contactId}/task_to_contact`, 'PUT');
+        const associations: Record<string, string> = {};
+
+        if (args.contactId) {
+          await hubspot(`/crm/v3/objects/tasks/${taskData.id}/associations/contacts/${args.contactId}/task_to_contact`, 'PUT');
+          associations.contactId = String(args.contactId);
+        }
+        if (args.dealId) {
+          await hubspot(`/crm/v4/objects/tasks/${taskData.id}/associations/deals/${args.dealId}`, 'PUT', [
+            { associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 216 },
+          ]);
+          associations.dealId = String(args.dealId);
+        }
 
         return {
           success: true,
           taskId: taskData.id,
-          contactId,
+          associations,
           properties: taskData.properties,
         };
       }
