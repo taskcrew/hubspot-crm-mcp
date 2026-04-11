@@ -626,7 +626,7 @@ const TOOLS = [
           description: 'Task priority (default: MEDIUM)',
         },
       },
-      required: ['contactId', 'subject'],
+      required: ['subject'],
     },
   },
   {
