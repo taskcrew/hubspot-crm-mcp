@@ -2050,10 +2050,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
+  }
+
+  // Auth: require Bearer token if REQUIRE_AUTH_TOKEN is set
+  const authToken = process.env.REQUIRE_AUTH_TOKEN;
+  if (authToken) {
+    const provided = req.headers.authorization?.replace('Bearer ', '');
+    if (provided !== authToken) {
+      return res.status(401).json({
+        jsonrpc: '2.0',
+        error: { code: -32001, message: 'Unauthorized: invalid or missing Bearer token' },
+        id: req.body?.id ?? null,
+      });
+    }
   }
 
   if (req.method !== 'POST') {
