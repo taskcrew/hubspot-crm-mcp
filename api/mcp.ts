@@ -2058,10 +2058,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Auth: require Bearer token if REQUIRE_AUTH_TOKEN is set
   const authToken = process.env.REQUIRE_AUTH_TOKEN;
-  // DEBUG: remove after confirming env var works
-  if (req.body?.method === 'debug_env') {
-    return res.status(200).json({ has_token: !!authToken, token_len: authToken?.length ?? 0 });
-  }
   if (authToken) {
     const provided = req.headers.authorization?.replace('Bearer ', '');
     if (provided !== authToken) {
