@@ -121,18 +121,30 @@ function normalizeProperties(value: unknown): string[] | null {
   return null;
 }
 
-// Accept `filters` either as a flat array of {propertyName, operator, value}
-// triples (wrapped into a single filterGroup) or pre-grouped via
-// `filterGroups`. Returns the raw filterGroups payload HubSpot expects, or
-// null when nothing usable is supplied.
+// Accept HubSpot search filters in any of the shapes callers actually send:
+//   - `filterGroups`: pre-grouped, the canonical HubSpot shape
+//   - `filters` (plural): flat array, wrapped into one group
+//   - `filter`  (singular): same as `filters`. LLM tool-call serializers
+//     and humans often emit this; failing silently was the original bug.
+//   - `filter` as a single object: wrap into a single-element group.
+// Returns the raw filterGroups payload HubSpot expects, or null when nothing
+// usable is supplied.
 function normalizeFilterGroups(args: Record<string, unknown>): Array<{ filters: Array<Record<string, unknown>> }> | null {
   const groups = args.filterGroups;
   if (Array.isArray(groups) && groups.length > 0) {
     return groups as Array<{ filters: Array<Record<string, unknown>> }>;
   }
-  const flat = args.filters;
-  if (Array.isArray(flat) && flat.length > 0) {
-    return [{ filters: flat as Array<Record<string, unknown>> }];
+  // Plural `filters` or singular `filter` alias
+  const flatRaw = args.filters ?? args.filter;
+  if (Array.isArray(flatRaw) && flatRaw.length > 0) {
+    return [{ filters: flatRaw as Array<Record<string, unknown>> }];
+  }
+  // Single filter object (e.g. filter: {propertyName, operator, value})
+  if (flatRaw && typeof flatRaw === 'object' && !Array.isArray(flatRaw)) {
+    const single = flatRaw as Record<string, unknown>;
+    if (typeof single.propertyName === 'string' && typeof single.operator === 'string') {
+      return [{ filters: [single] }];
+    }
   }
   return null;
 }
@@ -814,7 +826,14 @@ const TOOLS = [
         filters: {
           type: 'array',
           items: { type: 'object' },
-          description: 'Flat list of HubSpot filter clauses (e.g. [{propertyName,operator,value}]) ANDed with the convenience fields into one filterGroup. For OR semantics across groups, use `filterGroups` instead.',
+          description: 'Flat list of HubSpot filter clauses (e.g. [{propertyName,operator,value}]) ANDed with the convenience fields into one filterGroup. Also accepts the singular alias `filter` (array or single object). For OR semantics across groups, use `filterGroups` instead.',
+        },
+        filter: {
+          oneOf: [
+            { type: 'array', items: { type: 'object' } },
+            { type: 'object' },
+          ],
+          description: 'Singular alias for `filters`. Accepts either an array of filter clauses or a single {propertyName,operator,value} object. Provided because LLM clients commonly emit the singular form.',
         },
         filterGroups: {
           type: 'array',
@@ -1674,11 +1693,20 @@ async function handleTool(name: string, args: Record<string, unknown>): Promise<
           builtFilters.push({ propertyName: 'amount', operator: 'GTE', value: String(args.minAmount) });
         }
 
-        // Merge convenience filters with any user-supplied filterGroups / filters.
+        // Merge convenience filters with any user-supplied filterGroups / filters / filter.
         // User filterGroups become additional groups (OR semantics across groups);
-        // a flat `filters` array merges into the convenience group (AND within group).
+        // flat `filters` / `filter` (plural or singular alias) merge into the convenience group (AND within group).
         const userGroups = Array.isArray(args.filterGroups) ? (args.filterGroups as Array<{ filters: Array<Record<string, unknown>> }>) : [];
-        const userFlatFilters = Array.isArray(args.filters) ? (args.filters as Array<Record<string, unknown>>) : [];
+        const flatRaw = args.filters ?? args.filter;
+        let userFlatFilters: Array<Record<string, unknown>> = [];
+        if (Array.isArray(flatRaw)) {
+          userFlatFilters = flatRaw as Array<Record<string, unknown>>;
+        } else if (flatRaw && typeof flatRaw === 'object') {
+          const single = flatRaw as Record<string, unknown>;
+          if (typeof single.propertyName === 'string' && typeof single.operator === 'string') {
+            userFlatFilters = [single];
+          }
+        }
         const convenienceGroup = [...builtFilters, ...userFlatFilters];
 
         const filterGroups: Array<{ filters: Array<Record<string, unknown>> }> = [];
